@@ -2,7 +2,7 @@ import { Empty } from "../google/protobuf/empty";
 import {
   CallOptions,
   ClientMiddleware,
-  composeClientMiddleware,
+  ClientMiddlewareCall,
 } from "nice-grpc-common";
 import { ExternalRequest, ExternalResponse } from "./msg";
 import {
@@ -31,6 +31,33 @@ import {
   UnaryRequest,
   UnaryResponse,
 } from "./service";
+
+function composeClientMiddleware<Ext1, Ext2, RequiredCallOptionsExt>(
+  middleware1: ClientMiddleware<Ext1, RequiredCallOptionsExt>,
+  middleware2: ClientMiddleware<Ext2, RequiredCallOptionsExt & Ext1>,
+): ClientMiddleware<Ext1 & Ext2, RequiredCallOptionsExt> {
+  return <Request, Response>(
+    call: ClientMiddlewareCall<
+      Request,
+      Response,
+      Ext1 & Ext2 & RequiredCallOptionsExt
+    >,
+    options: CallOptions & Partial<Ext1 & Ext2 & RequiredCallOptionsExt>,
+  ) => {
+    return middleware2<Request, Response>(
+      {
+        ...call,
+        next: (request, options2) => {
+          return middleware1<Request, Response>(
+            { ...call, request } as any,
+            options2,
+          ) as any;
+        },
+      },
+      options,
+    );
+  };
+}
 
 type Primitive = string | boolean | number;
 type RequestPayload = Record<string, unknown>;
@@ -161,7 +188,7 @@ export function newCounterService(
   let middleware: ClientMiddleware = (call, options) => {
     return call.next(call.request, options);
   };
-  for (let i = 0; i < middlewares.length; i++) {
+  for (let i = 0; i < middlewares?.length || 0; i++) {
     middleware = composeClientMiddleware(middleware, middlewares[i]);
   }
 

@@ -55,6 +55,37 @@ func (g *Generator) ApplyTemplate() error {
 }
 
 func (g *Generator) applyHelperFunc() {
+	iClientMiddleware := niceGrpcCommon.Ident("ClientMiddleware")
+	iClientMiddlewareCall := niceGrpcCommon.Ident("ClientMiddlewareCall")
+	g.Pf(`
+function composeClientMiddleware<Ext1, Ext2, RequiredCallOptionsExt>(
+  middleware1: %s<Ext1, RequiredCallOptionsExt>,
+  middleware2: %s<Ext2, RequiredCallOptionsExt & Ext1>,
+): %s<Ext1 & Ext2, RequiredCallOptionsExt> {
+  return <Request, Response>(
+    call: %s<
+      Request,
+      Response,
+      Ext1 & Ext2 & RequiredCallOptionsExt
+    >,
+    options: CallOptions & Partial<Ext1 & Ext2 & RequiredCallOptionsExt>,
+  ) => {
+    return middleware2<Request, Response>(
+      {
+        ...call,
+        next: (request, options2) => {
+          return middleware1<Request, Response>(
+            {...call, request} as any,
+            options2,
+          ) as any;
+        },
+      },
+      options,
+    );
+  };
+}
+  `, iClientMiddleware, iClientMiddleware, iClientMiddleware, iClientMiddlewareCall)
+
 	s := `
 type Primitive = string | boolean | number;
 type RequestPayload = Record<string, unknown>;
@@ -198,9 +229,9 @@ func (g *Generator) applyService(service *protogen.Service) {
 	g.Pf(`let middleware: %s = (call, options) => {
     return call.next(call.request, options);
   };`, niceGrpcCommon.Ident("ClientMiddleware"))
-	g.Pf(`for (let i = 0; i < middlewares.length; i++) {
-    middleware = %s(middleware, middlewares[i]);
-  }`, niceGrpcCommon.Ident("composeClientMiddleware"))
+	g.Pf(`for (let i = 0; i < middlewares?.length || 0; i++) {
+    middleware = composeClientMiddleware(middleware, middlewares[i]);
+  }`)
 	g.P("")
 	g.P("return {")
 
