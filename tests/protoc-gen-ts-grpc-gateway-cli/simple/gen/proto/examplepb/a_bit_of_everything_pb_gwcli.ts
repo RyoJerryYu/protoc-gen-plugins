@@ -1,7 +1,11 @@
 import { Duration } from "../../google/protobuf/duration";
 import { Empty } from "../../google/protobuf/empty";
 import { StringValue } from "../../google/protobuf/wrappers";
-import { CallOptions } from "nice-grpc-common";
+import {
+  CallOptions,
+  ClientMiddleware,
+  composeClientMiddleware,
+} from "nice-grpc-common";
 import {
   ABitOfEverything,
   ABitOfEverythingRepeated,
@@ -131,7 +135,16 @@ function must<T>(value: T | null | undefined): T {
 export function newABitOfEverythingService(
   baseUrl: string,
   initReq: Partial<RequestInit> = {},
+  middlewares: ClientMiddleware[],
 ): ABitOfEverythingServiceClient {
+  //Compose middleware
+  let middleware: ClientMiddleware = (call, options) => {
+    return call.next(call.request, options);
+  };
+  for (let i = 0; i < middlewares.length; i++) {
+    middleware = composeClientMiddleware(middleware, middlewares[i]);
+  }
+
   return {
     async createBody(
       req: DeepPartial<ABitOfEverything>,
@@ -546,7 +559,16 @@ export function newABitOfEverythingService(
 export function newAnotherServiceWithNoBindings(
   baseUrl: string,
   initReq: Partial<RequestInit> = {},
+  middlewares: ClientMiddleware[],
 ): AnotherServiceWithNoBindingsClient {
+  //Compose middleware
+  let middleware: ClientMiddleware = (call, options) => {
+    return call.next(call.request, options);
+  };
+  for (let i = 0; i < middlewares.length; i++) {
+    middleware = composeClientMiddleware(middleware, middlewares[i]);
+  }
+
   return {
     async noBindings(
       req: DeepPartial<Empty>,

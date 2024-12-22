@@ -1,5 +1,9 @@
 import { Empty } from "../google/protobuf/empty";
-import { CallOptions } from "nice-grpc-common";
+import {
+  CallOptions,
+  ClientMiddleware,
+  composeClientMiddleware,
+} from "nice-grpc-common";
 import { ExternalRequest, ExternalResponse } from "./msg";
 import {
   BinaryRequest,
@@ -135,7 +139,16 @@ function must<T>(value: T | null | undefined): T {
 export function newCounterService(
   baseUrl: string,
   initReq: Partial<RequestInit> = {},
+  middlewares: ClientMiddleware[],
 ): CounterServiceClient {
+  //Compose middleware
+  let middleware: ClientMiddleware = (call, options) => {
+    return call.next(call.request, options);
+  };
+  for (let i = 0; i < middlewares.length; i++) {
+    middleware = composeClientMiddleware(middleware, middlewares[i]);
+  }
+
   return {
     async increment(
       req: DeepPartial<UnaryRequest>,

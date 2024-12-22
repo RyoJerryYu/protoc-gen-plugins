@@ -167,7 +167,20 @@ func (g *Generator) applyService(service *protogen.Service) {
 		g.P(leadingDetached)
 	}
 	g.P(service.Comments.Leading)
-	g.P("export function new", service.GoName, "(baseUrl: string, initReq: Partial<RequestInit> = {}): ", serviceModule.Ident(service.GoName+"Client"), " {")
+	g.P("export function new", service.GoName, "(")
+	g.P(" baseUrl: string,")
+	g.P(" initReq: Partial<RequestInit> = {},")
+	g.P(" middlewares: ", niceGrpcCommon.Ident("ClientMiddleware"), "[],")
+	g.P("): ", serviceModule.Ident(service.GoName+"Client"), " {")
+	g.P("")
+	g.PComment("Compose middleware")
+	g.Pf(`let middleware: %s = (call, options) => {
+    return call.next(call.request, options);
+  };`, niceGrpcCommon.Ident("ClientMiddleware"))
+	g.Pf(`for (let i = 0; i < middlewares.length; i++) {
+    middleware = %s(middleware, middlewares[i]);
+  }`, niceGrpcCommon.Ident("composeClientMiddleware"))
+	g.P("")
 	g.P("return {")
 
 	for _, method := range service.Methods {
