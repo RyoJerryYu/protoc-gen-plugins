@@ -1,11 +1,14 @@
 package gen
 
 import (
+	"fmt"
+	"strings"
 	"text/template"
 
 	"github.com/RyoJerryYu/protoc-gen-pluginx/pkg/pluginutils"
 	"github.com/golang/glog"
 	"google.golang.org/protobuf/compiler/protogen"
+	"google.golang.org/protobuf/reflect/protoreflect"
 )
 
 type Options struct {
@@ -127,7 +130,7 @@ function flattenRequestPayload<T extends RequestPayload>(
 function renderURLSearchParams<T extends RequestPayload>(
   requestPayload: T,
   urlPathParams: string[] = []
-): string {
+): string[][] {
   const flattenedRequestPayload = flattenRequestPayload(requestPayload);
 
   const urlSearchParams = Object.keys(flattenedRequestPayload).reduce(
@@ -144,7 +147,7 @@ function renderURLSearchParams<T extends RequestPayload>(
     [] as string[][]
   );
 
-  return new URLSearchParams(urlSearchParams).toString();
+  return urlSearchParams;
 }
 
 /**
@@ -155,6 +158,25 @@ function must<T>(value: T | null | undefined): T {
     throw new Error("Value is null or undefined");
   }
   return value;
+}
+
+/**
+ * CallParams is a type that represents the parameters that are passed to the transport's call method
+ */
+export type CallParams = {
+    url: string,
+    method: string,
+    queryParams?: string[][],
+    body?: BodyInit | null,
+}
+
+/**
+ * Transport is a type that represents the interface of a transport object
+ */
+export type Transport = {
+  call(
+    params: CallParams,
+  ): Promise<any>;
 }
 `
 	g.P(s)
@@ -168,9 +190,8 @@ func (g *Generator) applyService(service *protogen.Service) {
 	}
 	g.P(service.Comments.Leading)
 	g.P("export function new", service.GoName, "(")
-	g.P(" baseUrl: string,")
-	g.P(" initReq: Partial<RequestInit> = {},")
-	g.P(" middlewares: ", niceGrpcCommon.Ident("ClientMiddleware"), "[],")
+	g.P(" transport: Transport,")
+	g.P(" middlewares?: ", niceGrpcCommon.Ident("ClientMiddleware"), "[],")
 	g.P("): ", serviceModule.Ident(service.GoName+"Client"), " {")
 	g.P("")
 	g.PComment("Compose middleware")
@@ -213,12 +234,103 @@ func (g *Generator) applyMethod(method *protogen.Method) {
 		g.Pf("  options?: %s,", niceGrpcCommon.Ident("CallOptions"))
 		g.Pf("): Promise<%s> {", output)
 		g.Pf("  const fullReq = %s.fromPartial(req);", input)
-		g.Pf("  const url = new URL(%s, baseUrl).href;", g.renderURL(&g.TSOption)(method))
-		g.Pf("  const res = await fetch(url, {...initReq, %s});", g.buildInitReq(method))
-		g.Pf("  const body = await res.json();")
-		g.Pf("  if (!res.ok) throw body;")
-		g.Pf("  return %s.fromJSON(body);", output)
+		// METHOD
+		methodMethod := g.httpOptions(method).Method
+		// path, return pathParams
+		renderedPath, pathParams := g.renderPath(&g.TSOption)(method)
+		// queryParams
+		queryParams := g.renderQueryString(&g.TSOption)(method, pathParams)
+		// body
+		renderedBody := g.renderBody(&g.TSOption)(method)
+
+		g.Pf("  const res = await transport.call({")
+		g.Pf("    url: `%s`,", renderedPath)
+		g.Pf(`    method: "%s",`, methodMethod)
+		if queryParams != "" {
+			g.Pf("    queryParams: %s,", queryParams)
+		}
+		if renderedBody != "" {
+			g.Pf("    body: %s,", renderedBody)
+		}
+		g.Pf("  });")
+		g.Pf("  return %s.fromJSON(res);", output)
 		g.Pf("},")
 	}
 	g.P(method.Comments.Trailing)
+}
+
+// return the URL string and the pathParams
+func (g *Generator) renderPath(r *pluginutils.TSOption) func(method *protogen.Method) (string, []string) {
+	return func(method *protogen.Method) (string, []string) {
+		httpOpts := g.httpOptions(method)
+		methodURL := httpOpts.URL
+		matches := pathParamRegexp.FindAllStringSubmatch(methodURL, -1)
+		fieldsInPath := make([]string, 0, len(matches))
+		if len(matches) > 0 {
+			glog.V(2).Infof("url matches: %+v", matches)
+			for _, m := range matches {
+				expToReplace := m[0]
+				fieldNameRaw := m[1]
+				// fieldValuePattern := m[2]
+				part := fmt.Sprintf(`${%s}`, g.must("fullReq", fieldNameRaw))
+				methodURL = strings.ReplaceAll(methodURL, expToReplace, part)
+				fieldName := pluginutils.FieldName(r)(fieldNameRaw)
+				fieldsInPath = append(fieldsInPath, fieldName)
+			}
+		}
+
+		return methodURL, fieldsInPath
+	}
+}
+
+func (g *Generator) renderQueryString(r *pluginutils.TSOption) func(method *protogen.Method, urlPathParams []string) string {
+	return func(method *protogen.Method, urlPathParams []string) string {
+		httpOpts := g.httpOptions(method)
+		methodMethod := httpOpts.Method
+		if method.Desc.IsStreamingClient() || (methodMethod != "GET" && methodMethod != "DELETE") {
+			return ""
+		}
+		urlPathParamStrs := make([]string, 0, len(urlPathParams))
+		for _, pathParam := range urlPathParams {
+			urlPathParamStrs = append(urlPathParamStrs, fmt.Sprintf(`"%s"`, pathParam))
+		}
+		urlPathParamStr := fmt.Sprintf("[%s]", strings.Join(urlPathParamStrs, ", "))
+		renderURLSearchParams := fmt.Sprintf("renderURLSearchParams(req, %s)", urlPathParamStr)
+		return renderURLSearchParams
+	}
+}
+
+func (g *Generator) renderBody(r *pluginutils.TSOption) func(method *protogen.Method) string {
+	return func(method *protogen.Method) string {
+		httpOpts := g.httpOptions(method)
+		httpBody := httpOpts.Body
+
+		TSProtoJsonify := func(in string, msg *protogen.Message) string {
+			ident := g.QualifiedTSIdent(pluginutils.TSIdent_TSProto_Message(msg))
+			return `JSON.stringify(` + ident + `.toJSON(` + in + `))`
+		}
+		if httpBody == nil || *httpBody == "*" {
+			bodyMsg := method.Input
+			return TSProtoJsonify("fullReq", bodyMsg)
+		} else if *httpBody == "" {
+			return ""
+		}
+
+		// body in a field
+		bodyField := pluginutils.FindFieldByTextName(method.Input, *httpBody)
+		switch bodyField.Desc.Kind() {
+		case protoreflect.MessageKind:
+			bodyType := bodyField.Message
+			return TSProtoJsonify(g.must("fullReq", *httpBody), bodyType)
+		case protoreflect.EnumKind:
+			bodyType := bodyField.Enum
+			enumModule := pluginutils.TSModule_TSProto(bodyType.Desc.ParentFile())
+			toJsonIdent := enumModule.Ident(g.TSProto_EnumToJSONFuncName(bodyType.Desc))
+			toJsonFunc := g.QualifiedTSIdent(toJsonIdent)
+			return toJsonFunc + `(` + g.must("fullReq", *httpBody) + `)`
+		default:
+			glog.Fatalf("unsupported body field type: %s", bodyField.Desc.Kind())
+			return ""
+		}
+	}
 }

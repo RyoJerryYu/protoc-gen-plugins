@@ -106,7 +106,7 @@ function flattenRequestPayload<T extends RequestPayload>(
 function renderURLSearchParams<T extends RequestPayload>(
   requestPayload: T,
   urlPathParams: string[] = [],
-): string {
+): string[][] {
   const flattenedRequestPayload = flattenRequestPayload(requestPayload);
 
   const urlSearchParams = Object.keys(flattenedRequestPayload).reduce(
@@ -123,7 +123,7 @@ function renderURLSearchParams<T extends RequestPayload>(
     [] as string[][],
   );
 
-  return new URLSearchParams(urlSearchParams).toString();
+  return urlSearchParams;
 }
 
 /**
@@ -136,10 +136,26 @@ function must<T>(value: T | null | undefined): T {
   return value;
 }
 
+/**
+ * CallParams is a type that represents the parameters that are passed to the transport's call method
+ */
+export type CallParams = {
+  url: string;
+  method: string;
+  queryParams?: string[][];
+  body?: BodyInit | null;
+};
+
+/**
+ * Transport is a type that represents the interface of a transport object
+ */
+export type Transport = {
+  call(params: CallParams): Promise<any>;
+};
+
 export function newCounterService(
-  baseUrl: string,
-  initReq: Partial<RequestInit> = {},
-  middlewares: ClientMiddleware[],
+  transport: Transport,
+  middlewares?: ClientMiddleware[],
 ): CounterServiceClient {
   //Compose middleware
   let middleware: ClientMiddleware = (call, options) => {
@@ -155,15 +171,12 @@ export function newCounterService(
       options?: CallOptions,
     ): Promise<UnaryResponse> {
       const fullReq = UnaryRequest.fromPartial(req);
-      const url = new URL(`/main.CounterService/Increment`, baseUrl).href;
-      const res = await fetch(url, {
-        ...initReq,
+      const res = await transport.call({
+        url: `/main.CounterService/Increment`,
         method: "POST",
         body: JSON.stringify(UnaryRequest.toJSON(fullReq)),
       });
-      const body = await res.json();
-      if (!res.ok) throw body;
-      return UnaryResponse.fromJSON(body);
+      return UnaryResponse.fromJSON(res);
     },
 
     streamingIncrements(
@@ -178,16 +191,12 @@ export function newCounterService(
       options?: CallOptions,
     ): Promise<UnaryResponse> {
       const fullReq = UnaryRequest.fromPartial(req);
-      const url = new URL(`/main.CounterService/FailingIncrement`, baseUrl)
-        .href;
-      const res = await fetch(url, {
-        ...initReq,
+      const res = await transport.call({
+        url: `/main.CounterService/FailingIncrement`,
         method: "POST",
         body: JSON.stringify(UnaryRequest.toJSON(fullReq)),
       });
-      const body = await res.json();
-      if (!res.ok) throw body;
-      return UnaryResponse.fromJSON(body);
+      return UnaryResponse.fromJSON(res);
     },
 
     async echoBinary(
@@ -195,15 +204,12 @@ export function newCounterService(
       options?: CallOptions,
     ): Promise<BinaryResponse> {
       const fullReq = BinaryRequest.fromPartial(req);
-      const url = new URL(`/main.CounterService/EchoBinary`, baseUrl).href;
-      const res = await fetch(url, {
-        ...initReq,
+      const res = await transport.call({
+        url: `/main.CounterService/EchoBinary`,
         method: "POST",
         body: JSON.stringify(BinaryRequest.toJSON(fullReq)),
       });
-      const body = await res.json();
-      if (!res.ok) throw body;
-      return BinaryResponse.fromJSON(body);
+      return BinaryResponse.fromJSON(res);
     },
 
     async hTTPGet(
@@ -211,14 +217,12 @@ export function newCounterService(
       options?: CallOptions,
     ): Promise<HttpGetResponse> {
       const fullReq = HttpGetRequest.fromPartial(req);
-      const url = new URL(
-        `/api/${must(fullReq.numToIncrease)}?${renderURLSearchParams(req, ["numToIncrease"])}`,
-        baseUrl,
-      ).href;
-      const res = await fetch(url, { ...initReq, method: "GET" });
-      const body = await res.json();
-      if (!res.ok) throw body;
-      return HttpGetResponse.fromJSON(body);
+      const res = await transport.call({
+        url: `/api/${must(fullReq.numToIncrease)}`,
+        method: "GET",
+        queryParams: renderURLSearchParams(req, ["numToIncrease"]),
+      });
+      return HttpGetResponse.fromJSON(res);
     },
 
     async hTTPPostWithNestedBodyPath(
@@ -226,15 +230,12 @@ export function newCounterService(
       options?: CallOptions,
     ): Promise<HttpPostResponse> {
       const fullReq = HttpPostRequest.fromPartial(req);
-      const url = new URL(`/post/${must(fullReq.a)}`, baseUrl).href;
-      const res = await fetch(url, {
-        ...initReq,
+      const res = await transport.call({
+        url: `/post/${must(fullReq.a)}`,
         method: "POST",
         body: JSON.stringify(PostRequest.toJSON(must(fullReq.req))),
       });
-      const body = await res.json();
-      if (!res.ok) throw body;
-      return HttpPostResponse.fromJSON(body);
+      return HttpPostResponse.fromJSON(res);
     },
 
     async hTTPPostWithStarBodyPath(
@@ -242,18 +243,12 @@ export function newCounterService(
       options?: CallOptions,
     ): Promise<HttpPostResponse> {
       const fullReq = HttpPostRequest.fromPartial(req);
-      const url = new URL(
-        `/post/${must(fullReq.a)}/${must(fullReq.c)}`,
-        baseUrl,
-      ).href;
-      const res = await fetch(url, {
-        ...initReq,
+      const res = await transport.call({
+        url: `/post/${must(fullReq.a)}/${must(fullReq.c)}`,
         method: "POST",
         body: JSON.stringify(HttpPostRequest.toJSON(fullReq)),
       });
-      const body = await res.json();
-      if (!res.ok) throw body;
-      return HttpPostResponse.fromJSON(body);
+      return HttpPostResponse.fromJSON(res);
     },
 
     async hTTPPatch(
@@ -261,15 +256,12 @@ export function newCounterService(
       options?: CallOptions,
     ): Promise<HttpPatchResponse> {
       const fullReq = HttpPatchRequest.fromPartial(req);
-      const url = new URL(`/patch`, baseUrl).href;
-      const res = await fetch(url, {
-        ...initReq,
+      const res = await transport.call({
+        url: `/patch`,
         method: "PATCH",
         body: JSON.stringify(HttpPatchRequest.toJSON(fullReq)),
       });
-      const body = await res.json();
-      if (!res.ok) throw body;
-      return HttpPatchResponse.fromJSON(body);
+      return HttpPatchResponse.fromJSON(res);
     },
 
     async hTTPDelete(
@@ -277,14 +269,12 @@ export function newCounterService(
       options?: CallOptions,
     ): Promise<Empty> {
       const fullReq = HttpDeleteRequest.fromPartial(req);
-      const url = new URL(
-        `/delete/${must(fullReq.a)}?${renderURLSearchParams(req, ["a"])}`,
-        baseUrl,
-      ).href;
-      const res = await fetch(url, { ...initReq, method: "DELETE" });
-      const body = await res.json();
-      if (!res.ok) throw body;
-      return Empty.fromJSON(body);
+      const res = await transport.call({
+        url: `/delete/${must(fullReq.a)}`,
+        method: "DELETE",
+        queryParams: renderURLSearchParams(req, ["a"]),
+      });
+      return Empty.fromJSON(res);
     },
 
     async hTTPDeleteWithParams(
@@ -292,14 +282,12 @@ export function newCounterService(
       options?: CallOptions,
     ): Promise<HttpDeleteWithParamsResponse> {
       const fullReq = HttpDeleteWithParamsRequest.fromPartial(req);
-      const url = new URL(
-        `/delete/${must(fullReq.id)}?${renderURLSearchParams(req, ["id"])}`,
-        baseUrl,
-      ).href;
-      const res = await fetch(url, { ...initReq, method: "DELETE" });
-      const body = await res.json();
-      if (!res.ok) throw body;
-      return HttpDeleteWithParamsResponse.fromJSON(body);
+      const res = await transport.call({
+        url: `/delete/${must(fullReq.id)}`,
+        method: "DELETE",
+        queryParams: renderURLSearchParams(req, ["id"]),
+      });
+      return HttpDeleteWithParamsResponse.fromJSON(res);
     },
 
     async externalMessage(
@@ -307,15 +295,12 @@ export function newCounterService(
       options?: CallOptions,
     ): Promise<ExternalResponse> {
       const fullReq = ExternalRequest.fromPartial(req);
-      const url = new URL(`/main.CounterService/ExternalMessage`, baseUrl).href;
-      const res = await fetch(url, {
-        ...initReq,
+      const res = await transport.call({
+        url: `/main.CounterService/ExternalMessage`,
         method: "POST",
         body: JSON.stringify(ExternalRequest.toJSON(fullReq)),
       });
-      const body = await res.json();
-      if (!res.ok) throw body;
-      return ExternalResponse.fromJSON(body);
+      return ExternalResponse.fromJSON(res);
     },
 
     async hTTPGetWithURLSearchParams(
@@ -323,14 +308,12 @@ export function newCounterService(
       options?: CallOptions,
     ): Promise<HTTPGetWithURLSearchParamsResponse> {
       const fullReq = HTTPGetWithURLSearchParamsRequest.fromPartial(req);
-      const url = new URL(
-        `/api/query/${must(fullReq.a)}?${renderURLSearchParams(req, ["a"])}`,
-        baseUrl,
-      ).href;
-      const res = await fetch(url, { ...initReq, method: "GET" });
-      const body = await res.json();
-      if (!res.ok) throw body;
-      return HTTPGetWithURLSearchParamsResponse.fromJSON(body);
+      const res = await transport.call({
+        url: `/api/query/${must(fullReq.a)}`,
+        method: "GET",
+        queryParams: renderURLSearchParams(req, ["a"]),
+      });
+      return HTTPGetWithURLSearchParamsResponse.fromJSON(res);
     },
 
     async hTTPGetWithZeroValueURLSearchParams(
@@ -339,14 +322,12 @@ export function newCounterService(
     ): Promise<HTTPGetWithZeroValueURLSearchParamsResponse> {
       const fullReq =
         HTTPGetWithZeroValueURLSearchParamsRequest.fromPartial(req);
-      const url = new URL(
-        `/path/query?${renderURLSearchParams(req, [])}`,
-        baseUrl,
-      ).href;
-      const res = await fetch(url, { ...initReq, method: "GET" });
-      const body = await res.json();
-      if (!res.ok) throw body;
-      return HTTPGetWithZeroValueURLSearchParamsResponse.fromJSON(body);
+      const res = await transport.call({
+        url: `/path/query`,
+        method: "GET",
+        queryParams: renderURLSearchParams(req, []),
+      });
+      return HTTPGetWithZeroValueURLSearchParamsResponse.fromJSON(res);
     },
 
     async hTTPGetWithOptionalFields(
@@ -354,14 +335,12 @@ export function newCounterService(
       options?: CallOptions,
     ): Promise<OptionalFieldsResponse> {
       const fullReq = OptionalFieldsRequest.fromPartial(req);
-      const url = new URL(
-        `/optional?${renderURLSearchParams(req, [])}`,
-        baseUrl,
-      ).href;
-      const res = await fetch(url, { ...initReq, method: "GET" });
-      const body = await res.json();
-      if (!res.ok) throw body;
-      return OptionalFieldsResponse.fromJSON(body);
+      const res = await transport.call({
+        url: `/optional`,
+        method: "GET",
+        queryParams: renderURLSearchParams(req, []),
+      });
+      return OptionalFieldsResponse.fromJSON(res);
     },
   };
 }

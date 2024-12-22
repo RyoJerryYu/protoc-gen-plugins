@@ -100,7 +100,7 @@ function flattenRequestPayload<T extends RequestPayload>(
 function renderURLSearchParams<T extends RequestPayload>(
   requestPayload: T,
   urlPathParams: string[] = [],
-): string {
+): string[][] {
   const flattenedRequestPayload = flattenRequestPayload(requestPayload);
 
   const urlSearchParams = Object.keys(flattenedRequestPayload).reduce(
@@ -117,7 +117,7 @@ function renderURLSearchParams<T extends RequestPayload>(
     [] as string[][],
   );
 
-  return new URLSearchParams(urlSearchParams).toString();
+  return urlSearchParams;
 }
 
 /**
@@ -130,12 +130,28 @@ function must<T>(value: T | null | undefined): T {
   return value;
 }
 
+/**
+ * CallParams is a type that represents the parameters that are passed to the transport's call method
+ */
+export type CallParams = {
+  url: string;
+  method: string;
+  queryParams?: string[][];
+  body?: BodyInit | null;
+};
+
+/**
+ * Transport is a type that represents the interface of a transport object
+ */
+export type Transport = {
+  call(params: CallParams): Promise<any>;
+};
+
 // ABitOfEverything service is used to validate that APIs with complicated
 // proto messages and URL templates are still processed correctly.
 export function newABitOfEverythingService(
-  baseUrl: string,
-  initReq: Partial<RequestInit> = {},
-  middlewares: ClientMiddleware[],
+  transport: Transport,
+  middlewares?: ClientMiddleware[],
 ): ABitOfEverythingServiceClient {
   //Compose middleware
   let middleware: ClientMiddleware = (call, options) => {
@@ -151,15 +167,12 @@ export function newABitOfEverythingService(
       options?: CallOptions,
     ): Promise<ABitOfEverything> {
       const fullReq = ABitOfEverything.fromPartial(req);
-      const url = new URL(`/v1/example/a_bit_of_everything`, baseUrl).href;
-      const res = await fetch(url, {
-        ...initReq,
+      const res = await transport.call({
+        url: `/v1/example/a_bit_of_everything`,
         method: "POST",
         body: JSON.stringify(ABitOfEverything.toJSON(fullReq)),
       });
-      const body = await res.json();
-      if (!res.ok) throw body;
-      return ABitOfEverything.fromJSON(body);
+      return ABitOfEverything.fromJSON(res);
     },
 
     async lookup(
@@ -167,14 +180,12 @@ export function newABitOfEverythingService(
       options?: CallOptions,
     ): Promise<ABitOfEverything> {
       const fullReq = IdMessage.fromPartial(req);
-      const url = new URL(
-        `/v1/example/a_bit_of_everything/${must(fullReq.uuid)}?${renderURLSearchParams(req, ["uuid"])}`,
-        baseUrl,
-      ).href;
-      const res = await fetch(url, { ...initReq, method: "GET" });
-      const body = await res.json();
-      if (!res.ok) throw body;
-      return ABitOfEverything.fromJSON(body);
+      const res = await transport.call({
+        url: `/v1/example/a_bit_of_everything/${must(fullReq.uuid)}`,
+        method: "GET",
+        queryParams: renderURLSearchParams(req, ["uuid"]),
+      });
+      return ABitOfEverything.fromJSON(res);
     },
 
     async custom(
@@ -182,14 +193,11 @@ export function newABitOfEverythingService(
       options?: CallOptions,
     ): Promise<ABitOfEverything> {
       const fullReq = ABitOfEverything.fromPartial(req);
-      const url = new URL(
-        `/v1/example/a_bit_of_everything/${must(fullReq.uuid)}:custom`,
-        baseUrl,
-      ).href;
-      const res = await fetch(url, { ...initReq, method: "POST" });
-      const body = await res.json();
-      if (!res.ok) throw body;
-      return ABitOfEverything.fromJSON(body);
+      const res = await transport.call({
+        url: `/v1/example/a_bit_of_everything/${must(fullReq.uuid)}:custom`,
+        method: "POST",
+      });
+      return ABitOfEverything.fromJSON(res);
     },
 
     async doubleColon(
@@ -197,14 +205,11 @@ export function newABitOfEverythingService(
       options?: CallOptions,
     ): Promise<ABitOfEverything> {
       const fullReq = ABitOfEverything.fromPartial(req);
-      const url = new URL(
-        `/v1/example/a_bit_of_everything/${must(fullReq.uuid)}:custom:custom`,
-        baseUrl,
-      ).href;
-      const res = await fetch(url, { ...initReq, method: "POST" });
-      const body = await res.json();
-      if (!res.ok) throw body;
-      return ABitOfEverything.fromJSON(body);
+      const res = await transport.call({
+        url: `/v1/example/a_bit_of_everything/${must(fullReq.uuid)}:custom:custom`,
+        method: "POST",
+      });
+      return ABitOfEverything.fromJSON(res);
     },
 
     async update(
@@ -212,18 +217,12 @@ export function newABitOfEverythingService(
       options?: CallOptions,
     ): Promise<Empty> {
       const fullReq = ABitOfEverything.fromPartial(req);
-      const url = new URL(
-        `/v1/example/a_bit_of_everything/${must(fullReq.uuid)}`,
-        baseUrl,
-      ).href;
-      const res = await fetch(url, {
-        ...initReq,
+      const res = await transport.call({
+        url: `/v1/example/a_bit_of_everything/${must(fullReq.uuid)}`,
         method: "PUT",
         body: JSON.stringify(ABitOfEverything.toJSON(fullReq)),
       });
-      const body = await res.json();
-      if (!res.ok) throw body;
-      return Empty.fromJSON(body);
+      return Empty.fromJSON(res);
     },
 
     async updateV2(
@@ -231,18 +230,12 @@ export function newABitOfEverythingService(
       options?: CallOptions,
     ): Promise<Empty> {
       const fullReq = UpdateV2Request.fromPartial(req);
-      const url = new URL(
-        `/v2/example/a_bit_of_everything/${must(fullReq.abe?.uuid)}`,
-        baseUrl,
-      ).href;
-      const res = await fetch(url, {
-        ...initReq,
+      const res = await transport.call({
+        url: `/v2/example/a_bit_of_everything/${must(fullReq.abe?.uuid)}`,
         method: "PUT",
         body: JSON.stringify(ABitOfEverything.toJSON(must(fullReq.abe))),
       });
-      const body = await res.json();
-      if (!res.ok) throw body;
-      return Empty.fromJSON(body);
+      return Empty.fromJSON(res);
     },
 
     async delete(
@@ -250,14 +243,12 @@ export function newABitOfEverythingService(
       options?: CallOptions,
     ): Promise<Empty> {
       const fullReq = IdMessage.fromPartial(req);
-      const url = new URL(
-        `/v1/example/a_bit_of_everything/${must(fullReq.uuid)}?${renderURLSearchParams(req, ["uuid"])}`,
-        baseUrl,
-      ).href;
-      const res = await fetch(url, { ...initReq, method: "DELETE" });
-      const body = await res.json();
-      if (!res.ok) throw body;
-      return Empty.fromJSON(body);
+      const res = await transport.call({
+        url: `/v1/example/a_bit_of_everything/${must(fullReq.uuid)}`,
+        method: "DELETE",
+        queryParams: renderURLSearchParams(req, ["uuid"]),
+      });
+      return Empty.fromJSON(res);
     },
 
     async getQuery(
@@ -265,14 +256,12 @@ export function newABitOfEverythingService(
       options?: CallOptions,
     ): Promise<Empty> {
       const fullReq = ABitOfEverything.fromPartial(req);
-      const url = new URL(
-        `/v1/example/a_bit_of_everything/query/${must(fullReq.uuid)}?${renderURLSearchParams(req, ["uuid"])}`,
-        baseUrl,
-      ).href;
-      const res = await fetch(url, { ...initReq, method: "GET" });
-      const body = await res.json();
-      if (!res.ok) throw body;
-      return Empty.fromJSON(body);
+      const res = await transport.call({
+        url: `/v1/example/a_bit_of_everything/query/${must(fullReq.uuid)}`,
+        method: "GET",
+        queryParams: renderURLSearchParams(req, ["uuid"]),
+      });
+      return Empty.fromJSON(res);
     },
 
     async getRepeatedQuery(
@@ -280,14 +269,29 @@ export function newABitOfEverythingService(
       options?: CallOptions,
     ): Promise<ABitOfEverythingRepeated> {
       const fullReq = ABitOfEverythingRepeated.fromPartial(req);
-      const url = new URL(
-        `/v1/example/a_bit_of_everything_repeated/${must(fullReq.pathRepeatedFloatValue)}/${must(fullReq.pathRepeatedDoubleValue)}/${must(fullReq.pathRepeatedInt64Value)}/${must(fullReq.pathRepeatedUint64Value)}/${must(fullReq.pathRepeatedInt32Value)}/${must(fullReq.pathRepeatedFixed64Value)}/${must(fullReq.pathRepeatedFixed32Value)}/${must(fullReq.pathRepeatedBoolValue)}/${must(fullReq.pathRepeatedStringValue)}/${must(fullReq.pathRepeatedBytesValue)}/${must(fullReq.pathRepeatedUint32Value)}/${must(fullReq.pathRepeatedEnumValue)}/${must(fullReq.pathRepeatedSfixed32Value)}/${must(fullReq.pathRepeatedSfixed64Value)}/${must(fullReq.pathRepeatedSint32Value)}/${must(fullReq.pathRepeatedSint64Value)}?${renderURLSearchParams(req, ["pathRepeatedFloatValue", "pathRepeatedDoubleValue", "pathRepeatedInt64Value", "pathRepeatedUint64Value", "pathRepeatedInt32Value", "pathRepeatedFixed64Value", "pathRepeatedFixed32Value", "pathRepeatedBoolValue", "pathRepeatedStringValue", "pathRepeatedBytesValue", "pathRepeatedUint32Value", "pathRepeatedEnumValue", "pathRepeatedSfixed32Value", "pathRepeatedSfixed64Value", "pathRepeatedSint32Value", "pathRepeatedSint64Value"])}`,
-        baseUrl,
-      ).href;
-      const res = await fetch(url, { ...initReq, method: "GET" });
-      const body = await res.json();
-      if (!res.ok) throw body;
-      return ABitOfEverythingRepeated.fromJSON(body);
+      const res = await transport.call({
+        url: `/v1/example/a_bit_of_everything_repeated/${must(fullReq.pathRepeatedFloatValue)}/${must(fullReq.pathRepeatedDoubleValue)}/${must(fullReq.pathRepeatedInt64Value)}/${must(fullReq.pathRepeatedUint64Value)}/${must(fullReq.pathRepeatedInt32Value)}/${must(fullReq.pathRepeatedFixed64Value)}/${must(fullReq.pathRepeatedFixed32Value)}/${must(fullReq.pathRepeatedBoolValue)}/${must(fullReq.pathRepeatedStringValue)}/${must(fullReq.pathRepeatedBytesValue)}/${must(fullReq.pathRepeatedUint32Value)}/${must(fullReq.pathRepeatedEnumValue)}/${must(fullReq.pathRepeatedSfixed32Value)}/${must(fullReq.pathRepeatedSfixed64Value)}/${must(fullReq.pathRepeatedSint32Value)}/${must(fullReq.pathRepeatedSint64Value)}`,
+        method: "GET",
+        queryParams: renderURLSearchParams(req, [
+          "pathRepeatedFloatValue",
+          "pathRepeatedDoubleValue",
+          "pathRepeatedInt64Value",
+          "pathRepeatedUint64Value",
+          "pathRepeatedInt32Value",
+          "pathRepeatedFixed64Value",
+          "pathRepeatedFixed32Value",
+          "pathRepeatedBoolValue",
+          "pathRepeatedStringValue",
+          "pathRepeatedBytesValue",
+          "pathRepeatedUint32Value",
+          "pathRepeatedEnumValue",
+          "pathRepeatedSfixed32Value",
+          "pathRepeatedSfixed64Value",
+          "pathRepeatedSint32Value",
+          "pathRepeatedSint64Value",
+        ]),
+      });
+      return ABitOfEverythingRepeated.fromJSON(res);
     },
 
     async deepPathEcho(
@@ -295,18 +299,12 @@ export function newABitOfEverythingService(
       options?: CallOptions,
     ): Promise<ABitOfEverything> {
       const fullReq = ABitOfEverything.fromPartial(req);
-      const url = new URL(
-        `/v1/example/deep_path/${must(fullReq.singleNested?.name)}`,
-        baseUrl,
-      ).href;
-      const res = await fetch(url, {
-        ...initReq,
+      const res = await transport.call({
+        url: `/v1/example/deep_path/${must(fullReq.singleNested?.name)}`,
         method: "POST",
         body: JSON.stringify(ABitOfEverything.toJSON(fullReq)),
       });
-      const body = await res.json();
-      if (!res.ok) throw body;
-      return ABitOfEverything.fromJSON(body);
+      return ABitOfEverything.fromJSON(res);
     },
 
     async noBindings(
@@ -314,18 +312,12 @@ export function newABitOfEverythingService(
       options?: CallOptions,
     ): Promise<Empty> {
       const fullReq = Duration.fromPartial(req);
-      const url = new URL(
-        `/proto.examplepb.ABitOfEverythingService/NoBindings`,
-        baseUrl,
-      ).href;
-      const res = await fetch(url, {
-        ...initReq,
+      const res = await transport.call({
+        url: `/proto.examplepb.ABitOfEverythingService/NoBindings`,
         method: "POST",
         body: JSON.stringify(Duration.toJSON(fullReq)),
       });
-      const body = await res.json();
-      if (!res.ok) throw body;
-      return Empty.fromJSON(body);
+      return Empty.fromJSON(res);
     },
 
     async timeout(
@@ -333,14 +325,12 @@ export function newABitOfEverythingService(
       options?: CallOptions,
     ): Promise<Empty> {
       const fullReq = Empty.fromPartial(req);
-      const url = new URL(
-        `/v2/example/timeout?${renderURLSearchParams(req, [])}`,
-        baseUrl,
-      ).href;
-      const res = await fetch(url, { ...initReq, method: "GET" });
-      const body = await res.json();
-      if (!res.ok) throw body;
-      return Empty.fromJSON(body);
+      const res = await transport.call({
+        url: `/v2/example/timeout`,
+        method: "GET",
+        queryParams: renderURLSearchParams(req, []),
+      });
+      return Empty.fromJSON(res);
     },
 
     async errorWithDetails(
@@ -348,14 +338,12 @@ export function newABitOfEverythingService(
       options?: CallOptions,
     ): Promise<Empty> {
       const fullReq = Empty.fromPartial(req);
-      const url = new URL(
-        `/v2/example/errorwithdetails?${renderURLSearchParams(req, [])}`,
-        baseUrl,
-      ).href;
-      const res = await fetch(url, { ...initReq, method: "GET" });
-      const body = await res.json();
-      if (!res.ok) throw body;
-      return Empty.fromJSON(body);
+      const res = await transport.call({
+        url: `/v2/example/errorwithdetails`,
+        method: "GET",
+        queryParams: renderURLSearchParams(req, []),
+      });
+      return Empty.fromJSON(res);
     },
 
     async getMessageWithBody(
@@ -363,16 +351,12 @@ export function newABitOfEverythingService(
       options?: CallOptions,
     ): Promise<Empty> {
       const fullReq = MessageWithBody.fromPartial(req);
-      const url = new URL(`/v2/example/withbody/${must(fullReq.id)}`, baseUrl)
-        .href;
-      const res = await fetch(url, {
-        ...initReq,
+      const res = await transport.call({
+        url: `/v2/example/withbody/${must(fullReq.id)}`,
         method: "POST",
         body: JSON.stringify(Body.toJSON(must(fullReq.data))),
       });
-      const body = await res.json();
-      if (!res.ok) throw body;
-      return Empty.fromJSON(body);
+      return Empty.fromJSON(res);
     },
 
     async postWithEmptyBody(
@@ -380,18 +364,12 @@ export function newABitOfEverythingService(
       options?: CallOptions,
     ): Promise<Empty> {
       const fullReq = Body.fromPartial(req);
-      const url = new URL(
-        `/v2/example/postwithemptybody/${must(fullReq.name)}`,
-        baseUrl,
-      ).href;
-      const res = await fetch(url, {
-        ...initReq,
+      const res = await transport.call({
+        url: `/v2/example/postwithemptybody/${must(fullReq.name)}`,
         method: "POST",
         body: JSON.stringify(Body.toJSON(fullReq)),
       });
-      const body = await res.json();
-      if (!res.ok) throw body;
-      return Empty.fromJSON(body);
+      return Empty.fromJSON(res);
     },
 
     async checkGetQueryParams(
@@ -399,14 +377,12 @@ export function newABitOfEverythingService(
       options?: CallOptions,
     ): Promise<ABitOfEverything> {
       const fullReq = ABitOfEverything.fromPartial(req);
-      const url = new URL(
-        `/v1/example/a_bit_of_everything/params/get/${must(fullReq.singleNested?.name)}&${renderURLSearchParams(req, ["singleNested.name"])}`,
-        baseUrl,
-      ).href;
-      const res = await fetch(url, { ...initReq, method: "GET" });
-      const body = await res.json();
-      if (!res.ok) throw body;
-      return ABitOfEverything.fromJSON(body);
+      const res = await transport.call({
+        url: `/v1/example/a_bit_of_everything/params/get/${must(fullReq.singleNested?.name)}`,
+        method: "GET",
+        queryParams: renderURLSearchParams(req, ["singleNested.name"]),
+      });
+      return ABitOfEverything.fromJSON(res);
     },
 
     async checkNestedEnumGetQueryParams(
@@ -414,14 +390,12 @@ export function newABitOfEverythingService(
       options?: CallOptions,
     ): Promise<ABitOfEverything> {
       const fullReq = ABitOfEverything.fromPartial(req);
-      const url = new URL(
-        `/v1/example/a_bit_of_everything/params/get/nested_enum/${must(fullReq.singleNested?.ok)}&${renderURLSearchParams(req, ["singleNested.ok"])}`,
-        baseUrl,
-      ).href;
-      const res = await fetch(url, { ...initReq, method: "GET" });
-      const body = await res.json();
-      if (!res.ok) throw body;
-      return ABitOfEverything.fromJSON(body);
+      const res = await transport.call({
+        url: `/v1/example/a_bit_of_everything/params/get/nested_enum/${must(fullReq.singleNested?.ok)}`,
+        method: "GET",
+        queryParams: renderURLSearchParams(req, ["singleNested.ok"]),
+      });
+      return ABitOfEverything.fromJSON(res);
     },
 
     async checkPostQueryParams(
@@ -429,20 +403,14 @@ export function newABitOfEverythingService(
       options?: CallOptions,
     ): Promise<ABitOfEverything> {
       const fullReq = ABitOfEverything.fromPartial(req);
-      const url = new URL(
-        `/v1/example/a_bit_of_everything/params/post/${must(fullReq.stringValue)}`,
-        baseUrl,
-      ).href;
-      const res = await fetch(url, {
-        ...initReq,
+      const res = await transport.call({
+        url: `/v1/example/a_bit_of_everything/params/post/${must(fullReq.stringValue)}`,
         method: "POST",
         body: JSON.stringify(
           ABitOfEverything_Nested.toJSON(must(fullReq.singleNested)),
         ),
       });
-      const body = await res.json();
-      if (!res.ok) throw body;
-      return ABitOfEverything.fromJSON(body);
+      return ABitOfEverything.fromJSON(res);
     },
 
     async overwriteRequestContentType(
@@ -450,16 +418,12 @@ export function newABitOfEverythingService(
       options?: CallOptions,
     ): Promise<Empty> {
       const fullReq = Body.fromPartial(req);
-      const url = new URL(`/v2/example/overwriterequestcontenttype`, baseUrl)
-        .href;
-      const res = await fetch(url, {
-        ...initReq,
+      const res = await transport.call({
+        url: `/v2/example/overwriterequestcontenttype`,
         method: "POST",
         body: JSON.stringify(Body.toJSON(fullReq)),
       });
-      const body = await res.json();
-      if (!res.ok) throw body;
-      return Empty.fromJSON(body);
+      return Empty.fromJSON(res);
     },
 
     async overwriteResponseContentType(
@@ -467,14 +431,12 @@ export function newABitOfEverythingService(
       options?: CallOptions,
     ): Promise<StringValue> {
       const fullReq = Empty.fromPartial(req);
-      const url = new URL(
-        `/v2/example/overwriteresponsecontenttype?${renderURLSearchParams(req, [])}`,
-        baseUrl,
-      ).href;
-      const res = await fetch(url, { ...initReq, method: "GET" });
-      const body = await res.json();
-      if (!res.ok) throw body;
-      return StringValue.fromJSON(body);
+      const res = await transport.call({
+        url: `/v2/example/overwriteresponsecontenttype`,
+        method: "GET",
+        queryParams: renderURLSearchParams(req, []),
+      });
+      return StringValue.fromJSON(res);
     },
 
     async checkExternalPathEnum(
@@ -482,14 +444,12 @@ export function newABitOfEverythingService(
       options?: CallOptions,
     ): Promise<Empty> {
       const fullReq = MessageWithPathEnum.fromPartial(req);
-      const url = new URL(
-        `/v2/${must(fullReq.value)}:check?${renderURLSearchParams(req, ["value"])}`,
-        baseUrl,
-      ).href;
-      const res = await fetch(url, { ...initReq, method: "GET" });
-      const body = await res.json();
-      if (!res.ok) throw body;
-      return Empty.fromJSON(body);
+      const res = await transport.call({
+        url: `/v2/${must(fullReq.value)}:check`,
+        method: "GET",
+        queryParams: renderURLSearchParams(req, ["value"]),
+      });
+      return Empty.fromJSON(res);
     },
 
     async checkExternalNestedPathEnum(
@@ -497,14 +457,12 @@ export function newABitOfEverythingService(
       options?: CallOptions,
     ): Promise<Empty> {
       const fullReq = MessageWithNestedPathEnum.fromPartial(req);
-      const url = new URL(
-        `/v3/${must(fullReq.value)}:check?${renderURLSearchParams(req, ["value"])}`,
-        baseUrl,
-      ).href;
-      const res = await fetch(url, { ...initReq, method: "GET" });
-      const body = await res.json();
-      if (!res.ok) throw body;
-      return Empty.fromJSON(body);
+      const res = await transport.call({
+        url: `/v3/${must(fullReq.value)}:check`,
+        method: "GET",
+        queryParams: renderURLSearchParams(req, ["value"]),
+      });
+      return Empty.fromJSON(res);
     },
 
     async checkStatus(
@@ -512,14 +470,12 @@ export function newABitOfEverythingService(
       options?: CallOptions,
     ): Promise<CheckStatusResponse> {
       const fullReq = Empty.fromPartial(req);
-      const url = new URL(
-        `/v1/example/checkStatus?${renderURLSearchParams(req, [])}`,
-        baseUrl,
-      ).href;
-      const res = await fetch(url, { ...initReq, method: "GET" });
-      const body = await res.json();
-      if (!res.ok) throw body;
-      return CheckStatusResponse.fromJSON(body);
+      const res = await transport.call({
+        url: `/v1/example/checkStatus`,
+        method: "GET",
+        queryParams: renderURLSearchParams(req, []),
+      });
+      return CheckStatusResponse.fromJSON(res);
     },
 
     async postOneofEnum(
@@ -527,15 +483,12 @@ export function newABitOfEverythingService(
       options?: CallOptions,
     ): Promise<Empty> {
       const fullReq = OneofEnumMessage.fromPartial(req);
-      const url = new URL(`/v1/example/oneofenum`, baseUrl).href;
-      const res = await fetch(url, {
-        ...initReq,
+      const res = await transport.call({
+        url: `/v1/example/oneofenum`,
         method: "POST",
         body: exampleEnumToJSON(must(fullReq.exampleEnum)),
       });
-      const body = await res.json();
-      if (!res.ok) throw body;
-      return Empty.fromJSON(body);
+      return Empty.fromJSON(res);
     },
 
     async postRequiredMessageType(
@@ -543,23 +496,19 @@ export function newABitOfEverythingService(
       options?: CallOptions,
     ): Promise<Empty> {
       const fullReq = RequiredMessageTypeRequest.fromPartial(req);
-      const url = new URL(`/v1/example/requiredmessagetype`, baseUrl).href;
-      const res = await fetch(url, {
-        ...initReq,
+      const res = await transport.call({
+        url: `/v1/example/requiredmessagetype`,
         method: "POST",
         body: JSON.stringify(RequiredMessageTypeRequest.toJSON(fullReq)),
       });
-      const body = await res.json();
-      if (!res.ok) throw body;
-      return Empty.fromJSON(body);
+      return Empty.fromJSON(res);
     },
   };
 }
 
 export function newAnotherServiceWithNoBindings(
-  baseUrl: string,
-  initReq: Partial<RequestInit> = {},
-  middlewares: ClientMiddleware[],
+  transport: Transport,
+  middlewares?: ClientMiddleware[],
 ): AnotherServiceWithNoBindingsClient {
   //Compose middleware
   let middleware: ClientMiddleware = (call, options) => {
@@ -575,18 +524,12 @@ export function newAnotherServiceWithNoBindings(
       options?: CallOptions,
     ): Promise<Empty> {
       const fullReq = Empty.fromPartial(req);
-      const url = new URL(
-        `/proto.examplepb.AnotherServiceWithNoBindings/NoBindings`,
-        baseUrl,
-      ).href;
-      const res = await fetch(url, {
-        ...initReq,
+      const res = await transport.call({
+        url: `/proto.examplepb.AnotherServiceWithNoBindings/NoBindings`,
         method: "POST",
         body: JSON.stringify(Empty.toJSON(fullReq)),
       });
-      const body = await res.json();
-      if (!res.ok) throw body;
-      return Empty.fromJSON(body);
+      return Empty.fromJSON(res);
     },
   };
 }
